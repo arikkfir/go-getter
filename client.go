@@ -284,11 +284,22 @@ func (c *Client) get(ctx context.Context, req *Request, g Getter) (*GetResult, *
 			return nil, &getError{true, err}
 		}
 
-		err = copyDir(ctx, req.realDst, subDir, false, req.umask())
-		if err != nil {
-			return nil, &getError{false, err}
+		if stat, err := os.Stat(subDir); err != nil {
+			return nil, &getError{false, fmt.Errorf("failed to stat '%s': %w", subDir, err)}
+		} else if stat.IsDir() {
+			err = copyDir(ctx, req.realDst, subDir, false, req.umask())
+			if err != nil {
+				return nil, &getError{false, err}
+			}
+			return &GetResult{req.realDst}, nil
+		} else {
+			target := filepath.Join(req.realDst, filepath.Base(subDir))
+			_, err = copyFile(ctx, target, subDir, 0755, req.umask())
+			if err != nil {
+				return nil, &getError{false, fmt.Errorf("failed to copy '%s' to '%s': %w", subDir, target, err)}
+			}
+			return &GetResult{target}, nil
 		}
-		return &GetResult{req.realDst}, nil
 	}
 
 	return &GetResult{req.Dst}, nil
